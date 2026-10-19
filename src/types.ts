@@ -52,3 +52,12 @@ export interface WritingSample {
   text: string;
   note: string;
 }
+
+export interface SpellingIssue {
+  id: string;
+  word: string;
+  suggestion: string;
+  reason: string;
+  index: number;
+  length: number;
+}

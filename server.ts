@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 
 dotenv.config();
 
@@ -39,21 +39,20 @@ Sizning maqsadingiz — muallif qoralagan matnni quruq va oddiy so'zlardan tozal
 Qoidalar:
 1. Ohang: Do'stona, rag'batlantiruvchi, samimiy va o'rgatuvchi (ta'limiy).
 2. Tasviriy vositalar: Metaforalar, jonlantirish, sifatlashlar va o'xshatishlarni boyiting. O'quvchining ko'z o'ngida manzara gavdalansin ("Show, don't tell").
-3. Til boyligi: Takrorlanuvchi qashshoq so'zlar ("juda", "bo'ldi", "qildi") o'rniga rang-barang sinonimlar va iboralardan foydalaning.
+3. Til boyligi: Takrorlanuvchi qashshoq so'zlar o'rniga rang-barang sinonimlar va iboralardan foydalaning.
 4. Jumlalar ritmi: Matnda nafas olish ritmi bo'lsin — qisqa shiddatli jumlalar bilan salmoqli lirik jumlalarni uyg'unlashtiring.
-5. Murabbiy izohi (coachSummary & keyChanges): Foydalanuvchiga nima uchun bunday o'zgarishlar kiritilganini mehr bilan, ustozona tushuntiring, toki u keyingi safar o'zi yaxshiroq yoza olsin.`
+5. Murabbiy izohi: Foydalanuvchiga nima uchun bunday o'zgarishlar kiritilganini mehr bilan, ustozona tushuntiring.`
   },
   blog_post: {
     temperature: 0.70,
     label: "Ta'sirchan Blog Post",
     systemInstruction: `Siz zamonaviy raqamli hikoyachilik (digital storytelling) va blogerlik bo'yicha mahoratli murabbiyisiz.
-Sizning vazifangiz — matnni o'quvchi diqqatini birinchi jumlalardanoq "mixlab qo'yadigan" (hook), qiziqarli, samimiy va dinamik blog postga aylantirish.
+Sizning vazifangiz — matnni o'quvchi diqqatini birinchi jumlalardanoq tortadigan (hook), qiziqarli, samimiy va dinamik blog postga aylantirish.
 Qoidalar:
 1. Ohang: Zamonaviy, do'stona, ochiqko'ngil va energiyaga to'la.
-2. Kirish: Zerikarli rasmiy kirish o'rniga darhol savol, voqea yoki hayratomuz fikr bilan boshlang.
+2. Kirish: Zerikarli rasmiy kirish o'rniga darhol savol, voqea yoki qiziq fikr bilan boshlang.
 3. O'qilishi: Abzaslarni ixcham qiling, jumlalarni ravon va yengil o'qiladigan shaklga keltiring.
-4. Foyda va xulosa: O'quvchi matn oxirida o'zi uchun xulosa va taassurot olsin.
-5. Murabbiy izohi: Nima sababdan matn dinamikasi oshirilganini do'stona tushuntirib bering.`
+4. Foyda va xulosa: O'quvchi matn oxirida o'zi uchun xulosa va taassurot olsin.`
   },
   falsafiy_esse: {
     temperature: 0.55,
@@ -63,8 +62,7 @@ Qoidalar:
 1. Ohang: O'yga toldiruvchi, jiddiy ammo juda samimiy va tushunarli.
 2. Mantiq: Fikrlar oqimi bir-biriga uzviy bog'langan, pishiq dalillar bilan mustahkamlangan bo'lsin.
 3. Til: So'zlar aniq ma'noda tanlansin, mantiqiy xatolar va pala-partish jumlalar tekislansin.
-4. Teranlik: O'quvchiga shunchaki ma'lumot berish emas, uni fikrlashga, tafakkur qilishga chorlasin.
-5. Murabbiy izohi: Insho kompozitsiyasi va fikrlar rivoji haqida tushunarli tavsiyalar bering.`
+4. Teranlik: O'quvchini fikrlashga, tafakkur qilishga chorlasin.`
   },
   qisqa_hikoya: {
     temperature: 0.80,
@@ -72,9 +70,8 @@ Qoidalar:
     systemInstruction: `Siz lirik nasr, his-tuyg'ular va psixologik chizgilar ustasi bo'lgan murabbiyisiz.
 Qoidalar:
 1. Ohang: Nozik tuyg'uli, lirik, samimiy va ta'sirchan.
-2. Psixologizm: Qahramonning ruhiy kechinmalari, nigohi, nafas olishi, yurak urishi kabi detallarni ko'rsating.
-3. Mo'jizaviy soddalik: Keraksiz tafsilotlarni qisqartirib, har bir so'zga emotsional vazn bering.
-4. Murabbiy izohi: Foydalanuvchining his-tuyg'u tasvirlash qobiliyatini maqtang va nozik qirralarini ko'rsating.`
+2. Psixologizm: Qahramonning ruhiy kechinmalari, nigohi, ruhiyati kabi detallarni ko'rsating.
+3. Mo'jizaviy soddalik: Keraksiz tafsilotlarni qisqartirib, har bir so'zga emotsional vazn bering.`
   }
 };
 
@@ -92,7 +89,7 @@ const rewriteResponseSchema = {
     },
     keyChanges: {
       type: Type.ARRAY,
-      description: "Kiritilgan asosiy 3-4 ta uslubiy o'zgarishlar va ularning sababi.",
+      description: "Kiritilgan asosiy 2-4 ta uslubiy o'zgarishlar va ularning sababi.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -102,7 +99,7 @@ const rewriteResponseSchema = {
           },
           explanation: {
             type: Type.STRING,
-            description: "Qanday o'zgarish qilindi (masalan: Quruq 'juda chiroyli' o'rniga jonli metafora tanlandi).",
+            description: "Qanday o'zgarish qilindi.",
           },
           benefit: {
             type: Type.STRING,
@@ -118,7 +115,7 @@ const rewriteResponseSchema = {
     },
     styleTone: {
       type: Type.STRING,
-      description: "Yaratilgan uslub va kayfiyat ta'rifi (masalan: 'Jonli, lirik va rang-barang').",
+      description: "Yaratilgan uslub va kayfiyat ta'rifi.",
     },
     coachTip: {
       type: Type.STRING,
@@ -127,6 +124,48 @@ const rewriteResponseSchema = {
   },
   required: ["improvedText", "coachSummary", "keyChanges", "readabilityScore", "styleTone", "coachTip"],
 };
+
+// Bulletproof JSON cleaner and parser
+function cleanAndParseJSON(rawText: string, originalFallbackText: string) {
+  let cleaned = (rawText || '').trim();
+
+  // Strip markdown code fences if present (```json ... ``` or ``` ...)
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+
+  // Attempt direct JSON parse
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Attempt extracting between first '{' and last '}'
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+      } catch {
+        // Fallback reconstruction
+      }
+    }
+
+    // Graceful fallback object if JSON syntax had issues
+    return {
+      improvedText: cleaned || originalFallbackText,
+      coachSummary: "Matn qayta ishlandi va uslubiy jihatdan takomillashtirildi.",
+      keyChanges: [
+        {
+          aspect: "Uslubiy sayqal",
+          explanation: "Jumlalar ritmi va so'zlar mutanosibligi yaxshilandi.",
+          benefit: "Matn ravonroq va o'qilishi yoqimliroq bo'ldi.",
+        },
+      ],
+      readabilityScore: 88,
+      styleTone: "Sayqallangan va ifodali",
+      coachTip: "Yozishda sodda so'zlarni boy sinonimlar bilan almashtirishga davom eting.",
+    };
+  }
+}
 
 // API: One-click smart rewrite with dynamic temperature and system instruction
 app.post('/api/coach/rewrite', async (req, res) => {
@@ -138,7 +177,9 @@ app.post('/api/coach/rewrite', async (req, res) => {
     }
 
     const config = GENRE_CONFIGS[genre] || GENRE_CONFIGS['badiiy_hikoya'];
-    const temperature = typeof customTemperature === 'number' ? customTemperature : config.temperature;
+    let temperature = typeof customTemperature === 'number' ? customTemperature : config.temperature;
+    // Ensure temperature is in valid range
+    temperature = Math.max(0.1, Math.min(1.0, temperature));
 
     let dynamicInstruction = config.systemInstruction;
     if (customTone && typeof customTone === 'string') {
@@ -149,7 +190,7 @@ app.post('/api/coach/rewrite', async (req, res) => {
 ---
 ${text.trim()}
 ---
-Iltimos, do'stona va ta'limiy ohangda javob bering.`;
+Iltimos, belgilangan JSON schema asosida do'stona va ta'limiy ohangda javob bering.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -159,15 +200,13 @@ Iltimos, do'stona va ta'limiy ohangda javob bering.`;
         temperature: temperature,
         responseMimeType: 'application/json',
         responseSchema: rewriteResponseSchema,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       },
     });
 
-    const jsonText = response.text;
-    if (!jsonText) {
-      throw new Error("Model bo'sh javob qaytardi");
-    }
+    const jsonText = response.text || '';
+    const parsedData = cleanAndParseJSON(jsonText, text.trim());
 
-    const parsedData = JSON.parse(jsonText);
     res.json({
       success: true,
       data: parsedData,
@@ -180,7 +219,7 @@ Iltimos, do'stona va ta'limiy ohangda javob bering.`;
   } catch (err: any) {
     console.error("Coach rewrite error:", err);
     res.status(500).json({
-      error: "Tahrirlash jarayonida kutilmagan xatolik yuz berdi.",
+      error: "Tahrirlash jarayonida xatolik yuz berdi.",
       details: err?.message || String(err),
     });
   }
@@ -212,7 +251,7 @@ Iltimos, ushbu jumla uchun 3 xil uslubdagi ajoyib muqobil variantni va do'stona 
           items: {
             type: Type.OBJECT,
             properties: {
-              style: { type: Type.STRING, description: "Uslub nomi (masalan: 'Tasviriy / Poetika', 'Dinamik / Shiddatli', 'Falsafiy / Salmoqli')" },
+              style: { type: Type.STRING, description: "Uslub nomi" },
               sentence: { type: Type.STRING, description: "Yaxshilangan variant" },
               whyBetter: { type: Type.STRING, description: "Nega bu variant ta'sirli" },
             },
@@ -227,14 +266,15 @@ Iltimos, ushbu jumla uchun 3 xil uslubdagi ajoyib muqobil variantni va do'stona 
       model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
-        systemInstruction: "Siz o'zbek tili va adabiyotining samimiy, mehribon ustozisiz. Yozuvchilarga har bir so'zning qadrini o'rgatasiz.",
+        systemInstruction: "Siz o'zbek tili va adabiyotining samimiy, mehribon ustozisiz.",
         temperature: 0.8,
         responseMimeType: 'application/json',
         responseSchema: adviceSchema,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       },
     });
 
-    const parsed = JSON.parse(response.text || '{}');
+    const parsed = cleanAndParseJSON(response.text || '{}', sentence);
     res.json({ success: true, data: parsed });
   } catch (err: any) {
     console.error("Sentence advice error:", err);

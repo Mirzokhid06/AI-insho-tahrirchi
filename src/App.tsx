@@ -113,7 +113,10 @@ export default function App() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Matnni tahrirlashda xatolik yuz berdi");
+        const errorMsg = data.details
+          ? `${data.error} (${data.details})`
+          : (data.error || "Matnni tahrirlashda xatolik yuz berdi");
+        throw new Error(errorMsg);
       }
 
       const rewriteData: RewriteResult = data.data;
