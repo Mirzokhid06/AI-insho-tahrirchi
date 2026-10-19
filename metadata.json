@@ -1,0 +1,6 @@
+{
+  "name": "Insho va Matn Tahrirchisi (AI Writing Coach)",
+  "description": "Badiiy asarlar, hikoyalar va blog postlarni professional darajada sayqallovchi, do'stona ta'limiy AI yozuv murabbiyi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
