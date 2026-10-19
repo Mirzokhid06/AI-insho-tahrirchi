@@ -36,7 +36,12 @@ export const SentenceCoachModal: React.FC<SentenceCoachModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sentence, context: contextText.slice(0, 500) }),
       });
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      const responseText = await res.text();
+      if (!contentType.includes('application/json')) {
+        throw new Error("Server bilan aloqa vaqtinchalik uzildi.");
+      }
+      const data = JSON.parse(responseText);
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Maslahat olishda xatolik yuz berdi");
       }

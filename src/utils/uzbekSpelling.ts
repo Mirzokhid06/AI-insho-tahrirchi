@@ -66,7 +66,7 @@ const COMMON_UZBEK_CORRECTIONS: Record<string, { correct: string; reason: string
   'talafuz': { correct: 'talaffuz', reason: "Ikkita 'f' bilan yoziladi (talaffuz)" },
   'gramatika': { correct: 'grammatika', reason: "Ikkita 'm' bilan yoziladi (grammatika)" },
 
-  // Og'zaki / Lahja shakllari (Colloquial & Speech-to-text drops)
+  // Og'zaki / Lahja shakllari (Colloquial & Dialects)
   'kemadi': { correct: 'kelmadi', reason: "Adabiy tilda 'l' tushirilmaydi: kelmadi" },
   'kemayapti': { correct: 'kelmayapti', reason: "Adabiy tilda: kelmayapti" },
   'kegan': { correct: 'kelgan', reason: "Adabiy tilda: kelgan" },
@@ -79,6 +79,7 @@ const COMMON_UZBEK_CORRECTIONS: Record<string, { correct: string; reason: string
   'bopti': { correct: "bo'pti", reason: "Tutuq belgisi bilan: bo'pti" },
   'biza': { correct: 'bizlar', reason: "Adabiy tilda: biz yoki bizlar" },
   'sila': { correct: 'sizlar', reason: "Adabiy tilda: siz yoki sizlar" },
+  'silab': { correct: 'sizlar', reason: "Adabiy tilda: sizlar" },
   'aytishuvotti': { correct: 'aytishyapti', reason: "Adabiy tilda: aytishyapti" },
   'gapirishuvotti': { correct: 'gapirishyapti', reason: "Adabiy tilda: gapirishyapti" },
   'chuntim': { correct: 'tushundim', reason: "Adabiy tilda: tushundim" },
@@ -94,6 +95,13 @@ const COMMON_UZBEK_CORRECTIONS: Record<string, { correct: string; reason: string
   'golib': { correct: "g'olib", reason: "Apostrof bilan yoziladi: g'olib" },
   'gozallik': { correct: "go'zallik", reason: "Apostrof bilan yoziladi: go'zallik" },
   'gozal': { correct: "go'zal", reason: "Apostrof bilan yoziladi: go'zal" },
+
+  // Texnik va sheva atamalari
+  'diplol': { correct: 'deploy', reason: "Dasturlash atamasi: deploy (joylashtirish)" },
+  'proyektimiza': { correct: 'loyihamiz', reason: "Adabiy tilda: loyihamiz (proyektimiz)" },
+  'gapiziyam': { correct: 'gapingizni ham', reason: "Adabiy tilda: gapingizni ham" },
+  'gapiz': { correct: 'gapingiz', reason: "Adabiy tilda: gapingiz" },
+  'akajonimiza': { correct: 'akajonimiz', reason: "Adabiy tilda: akajonimiz" },
 };
 
 // Scan text for spelling issues
@@ -101,7 +109,6 @@ export function findUzbekSpellingIssues(text: string): SpellingIssue[] {
   if (!text || text.trim().length === 0) return [];
 
   const issues: SpellingIssue[] = [];
-  // Match words, including apostrophes within words
   const wordRegex = /[a-zA-Zʻʼ'`’‘]+/g;
   let match: RegExpExecArray | null;
 
@@ -110,9 +117,8 @@ export function findUzbekSpellingIssues(text: string): SpellingIssue[] {
     const startIndex = match.index;
     const lowerWord = rawWord
       .toLowerCase()
-      .replace(/[ʻʼ`’‘]/g, "'"); // normalize apostrophe
+      .replace(/[ʻʼ`’‘]/g, "'");
 
-    // Check direct dictionary corrections
     if (COMMON_UZBEK_CORRECTIONS[lowerWord]) {
       const matchRule = COMMON_UZBEK_CORRECTIONS[lowerWord];
       const isCapitalized = /^[A-Z]/.test(rawWord);
@@ -131,7 +137,6 @@ export function findUzbekSpellingIssues(text: string): SpellingIssue[] {
       });
     }
 
-    // Check for erroneous backtick apostrophes like o` or g`
     if (/[ogOG][`’‘]/.test(rawWord)) {
       const fixed = rawWord.replace(/([ogOG])[`’‘]/g, "$1'");
       issues.push({
@@ -148,17 +153,35 @@ export function findUzbekSpellingIssues(text: string): SpellingIssue[] {
   return issues;
 }
 
-// Post-process speech recognition output to literary, clean Uzbek
+// Post-process speech recognition output to literary, clean Uzbek (including dialect fixes)
 export function normalizeUzbekVoiceText(speechText: string): string {
   if (!speechText) return '';
 
   let normalized = speechText;
 
-  // 1. Normalize all irregular apostrophes (` , ’, ‘, ʻ, ʼ) to standard single quote '
+  // 1. Remove background mic test / prompt echoes
+  normalized = normalized.replace(/\bEshitmoqdaman\s+abu\s+demak\s+gapirgan\s+gapiziyam\s+yozib\s+berar\s+ekan\b/gi, '');
+  normalized = normalized.replace(/\bEshitmoqdaman\s+abu\b/gi, '');
+
+  // 2. Normalize irregular apostrophes
   normalized = normalized.replace(/([ogOG])[ʻʼ`’‘]/g, "$1'");
 
-  // 2. Map common colloquial speech-to-text words to standard literary Uzbek
+  // 3. Map spoken dialects and misheard speech to literary Uzbek
   const speechMap: [RegExp, string][] = [
+    // Tech & internet dictation mishears
+    [/\bgooglaya\s+studiyada\b/gi, "Google AI Studio'da"],
+    [/\bgooglaya\s+studiya\b/gi, "Google AI Studio"],
+    [/\bnetlifaga\b/gi, "Netlify'ga"],
+    [/\bdiplol\s+qilishni\b/gi, "deploy qilishni"],
+    [/\bdiplol\b/gi, "deploy"],
+    [/\bproyektimiza\b/gi, "loyihamizni"],
+    [/\bproyektimiz\b/gi, "loyihamiz"],
+    [/\bsilab\s+bilan\b/gi, "sizlar bilan"],
+    [/\bsila\s+bilan\b/gi, "sizlar bilan"],
+    [/\bgapiziyam\b/gi, "gapingizni ham"],
+    [/\bgapiz\b/gi, "gapingiz"],
+
+    // Tashkent & common colloquial
     [/\bkemadi\b/gi, 'kelmadi'],
     [/\bkemayapti\b/gi, 'kelmayapti'],
     [/\bkegan\b/gi, 'kelgan'],
@@ -166,13 +189,37 @@ export function normalizeUzbekVoiceText(speechText: string): string {
     [/\bketvotti\b/gi, 'ketyapti'],
     [/\bovotti\b/gi, 'olyapti'],
     [/\bqilvotti\b/gi, 'qilyapti'],
+    [/\bqvomman\b/gi, 'qilyapman'],
+    [/\bqivotgan\b/gi, 'qilayotgan'],
+    [/\bketvotgan\b/gi, 'ketayotgan'],
     [/\bbogan\b/gi, "bo'lgan"],
     [/\bbop\s+qoldi\b/gi, "bo'lib qoldi"],
     [/\bbop\s+ketdi\b/gi, "bo'lib ketdi"],
     [/\bbop\b/gi, "bo'lib"],
     [/\bbopti\b/gi, "bo'pti"],
     [/\bbiza\b/gi, 'biz'],
-    [/\bsila\b/gi, 'siz'],
+    [/\bsila\b/gi, 'sizlar'],
+
+    // Vodiy (Fergana, Andijan, Namangan) dialect
+    [/\bkelvatman\b/gi, 'kelyapman'],
+    [/\bborvatman\b/gi, 'boryapman'],
+    [/\baytvatman\b/gi, 'aytyapman'],
+    [/\baytopti\b/gi, 'aytyapti'],
+    [/\bkelopti\b/gi, 'kelyapti'],
+    [/\bboropti\b/gi, 'boryapti'],
+    [/\bboptur\b/gi, "bo'lib tur"],
+    [/\bakajonimiza\b/gi, 'akajonimiz'],
+
+    // Samarkand & Bukhara
+    [/\bbordizmi\b/gi, 'bordingizmi'],
+    [/\bqildizmi\b/gi, 'qildingizmi'],
+    [/\bkeldimi\s+ey\b/gi, 'keldimi'],
+
+    // Xorazm dialect
+    [/\bna\s+qilyapsan\b/gi, 'nima qilyapsan'],
+    [/\byuribsanba\b/gi, 'yuribsanmi'],
+
+    // General phonetics
     [/\bchundim\b/gi, 'tushundim'],
     [/\bchuntim\b/gi, 'tushundim'],
     [/\bchundizmi\b/gi, 'tushundingizmi'],
@@ -204,7 +251,10 @@ export function normalizeUzbekVoiceText(speechText: string): string {
     normalized = normalized.replace(pattern, replacement);
   }
 
-  // 3. Ensure sentence starting letter is capitalized if starting fresh
+  // Trim extra spaces
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+
+  // Capitalize first letter
   if (normalized.length > 0) {
     normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
   }

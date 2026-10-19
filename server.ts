@@ -169,6 +169,7 @@ function cleanAndParseJSON(rawText: string, originalFallbackText: string) {
 
 // API: One-click smart rewrite with dynamic temperature and system instruction
 app.post('/api/coach/rewrite', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   try {
     const { text, genre = 'badiiy_hikoya', customTemperature, customTone } = req.body;
 
@@ -178,7 +179,6 @@ app.post('/api/coach/rewrite', async (req, res) => {
 
     const config = GENRE_CONFIGS[genre] || GENRE_CONFIGS['badiiy_hikoya'];
     let temperature = typeof customTemperature === 'number' ? customTemperature : config.temperature;
-    // Ensure temperature is in valid range
     temperature = Math.max(0.1, Math.min(1.0, temperature));
 
     let dynamicInstruction = config.systemInstruction;
@@ -207,7 +207,7 @@ Iltimos, belgilangan JSON schema asosida do'stona va ta'limiy ohangda javob beri
     const jsonText = response.text || '';
     const parsedData = cleanAndParseJSON(jsonText, text.trim());
 
-    res.json({
+    return res.json({
       success: true,
       data: parsedData,
       meta: {
@@ -218,8 +218,68 @@ Iltimos, belgilangan JSON schema asosida do'stona va ta'limiy ohangda javob beri
     });
   } catch (err: any) {
     console.error("Coach rewrite error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Tahrirlash jarayonida xatolik yuz berdi.",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+// API: Normalize regional dialects and speech-to-text recognition errors
+app.post('/api/coach/normalize-speech', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  try {
+    const { text } = req.body;
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: "Iltimos, matn kiriting." });
+    }
+
+    const systemInstruction = `Siz O'zbekistonning barcha hududiy shevalari (Toshkent, Farg'ona vodiysi, Samarqand, Buxoro, Xorazm, Qashqadaryo, Surxondaryo) hamda og'zaki nutq talaffuzi bo'yicha yetuk mutaxassissiz.
+Vazifangiz: Foydalanuvchi ovozda aytgan yoki shevada yozilgan matnni sof, chiroyli va qat'iy adabiy O'zbek tiliga aylantirish.
+Qoidalar:
+1. Barcha sheva so'zlarini adabiy ekvivalentiga o'giring (masalan: "ovotti/bovotti" -> "olyapti/bo'lyapti", "gapiziyam" -> "gapingizni ham", "proyektimiza" -> "loyihamiz", "silab bilan" -> "sizlar bilan", "chundim" -> "tushundim").
+2. Nutqni aniqlashdagi fonetik chalkashliklarni (masalan: "googlaya studiyada" -> "Google AI Studio'da", "netlifaga" -> "Netlify'ga", "diplol" -> "deploy qilish", "proyekt" -> "loyiha") to'g'ri kontekstda anglab, professional tarzda to'g'rilang.
+3. Agar ovoz yozilishida fon shovqini yoki sinov iboralari (masalan: "Eshitmoqdaman abu demak gapirgan gapiziyam yozib berar ekan") bo'lsa, ularni tozalab, haqiqiy maqsaddagi matnni saqlang.
+4. Tinish belgilari, bosh harflar va imlo qoidalarini (x/h, tutuq belgisi o', g') to'liq me'yorga keltiring.`;
+
+    const normalizeSchema = {
+      type: Type.OBJECT,
+      properties: {
+        normalizedText: {
+          type: Type.STRING,
+          description: "Shevalardan tozalangan, to'liq me'yoriy adabiy o'zbek tilidagi matn",
+        },
+        detectedDialects: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Aniqlangan sheva yoki og'zaki xatolar (masalan: 'Toshkent shevasi qo'shimchalari', 'Og'zaki qisqartmalar', 'Texnik atamalar talaffuzi')",
+        },
+        coachNote: {
+          type: Type.STRING,
+          description: "Murabbiyning sheva va talaffuzni to'g'rilash bo'yicha qisqa do'stona xulosasi",
+        },
+      },
+      required: ["normalizedText", "detectedDialects", "coachNote"],
+    };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: `Quyidagi og'zaki/shevadagi matnni sof adabiy o'zbek tiliga o'giring:\n"${text.trim()}"`,
+      config: {
+        systemInstruction,
+        temperature: 0.3,
+        responseMimeType: 'application/json',
+        responseSchema: normalizeSchema,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      },
+    });
+
+    const parsed = cleanAndParseJSON(response.text || '{}', text.trim());
+    return res.json({ success: true, data: parsed });
+  } catch (err: any) {
+    console.error("Normalize speech error:", err);
+    return res.status(500).json({
+      error: "Shevani adabiy tilga o'tkazishda xatolik yuz berdi.",
       details: err?.message || String(err),
     });
   }
@@ -227,6 +287,7 @@ Iltimos, belgilangan JSON schema asosida do'stona va ta'limiy ohangda javob beri
 
 // API: Ask coach advice on specific sentence / paragraph
 app.post('/api/coach/sentence-advice', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   try {
     const { sentence, context } = req.body;
     if (!sentence || typeof sentence !== 'string') {
@@ -275,14 +336,32 @@ Iltimos, ushbu jumla uchun 3 xil uslubdagi ajoyib muqobil variantni va do'stona 
     });
 
     const parsed = cleanAndParseJSON(response.text || '{}', sentence);
-    res.json({ success: true, data: parsed });
+    return res.json({ success: true, data: parsed });
   } catch (err: any) {
     console.error("Sentence advice error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Maslahat olishda xatolik yuz berdi.",
       details: err?.message || String(err),
     });
   }
+});
+
+// Global Express JSON error handler - guarantee JSON output, never HTML error pages
+app.use((err: any, _req: any, res: any, next: any) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  if (err instanceof SyntaxError && 'status' in err && (err as any).status === 400) {
+    return res.status(400).json({
+      error: "Yuborilgan so'rov formati noto'g'ri.",
+      details: err.message,
+    });
+  }
+  return res.status(500).json({
+    error: "Kutilmagan server xatoligi yuz berdi.",
+    details: err?.message || String(err),
+  });
 });
 
 // Dev vs Prod Vite Mounting

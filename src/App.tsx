@@ -111,7 +111,20 @@ export default function App() {
         }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      const responseText = await res.text();
+
+      if (!contentType.includes('application/json')) {
+        throw new Error("Server bilan aloqada vaqtinchalik uzilish bo'ldi. Iltimos, qaytadan 'Mukammallashtirish' tugmasini bosing.");
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error("Serverdan noto'g'ri formatdagi ma'lumot keldi. Iltimos qaytadan urinib ko'ring.");
+      }
+
       if (!res.ok || !data.success) {
         const errorMsg = data.details
           ? `${data.error} (${data.details})`

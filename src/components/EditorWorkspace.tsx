@@ -12,6 +12,8 @@ import {
   ChevronUp,
   Wand2,
   Check,
+  Languages,
+  Loader2,
 } from 'lucide-react';
 import { findUzbekSpellingIssues, normalizeUzbekVoiceText } from '../utils/uzbekSpelling.ts';
 import { SpellingIssue } from '../types.ts';
@@ -47,6 +49,10 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
   // Real-time spell checking states
   const [enableSpellCheck, setEnableSpellCheck] = useState<boolean>(true);
   const [showSpellIssues, setShowSpellIssues] = useState<boolean>(true);
+
+  // Dialect normalization state
+  const [isNormalizingDialect, setIsNormalizingDialect] = useState<boolean>(false);
+  const [dialectNotification, setDialectNotification] = useState<string | null>(null);
 
   // Check Web Speech API support on mount
   useEffect(() => {
@@ -119,6 +125,45 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
     onChangeText(updated);
   };
 
+  // Dialect-to-Literary Converter using backend AI endpoint
+  const handleNormalizeDialect = async () => {
+    if (!text.trim() || isNormalizingDialect) return;
+    setIsNormalizingDialect(true);
+    setSpeechError(null);
+    setDialectNotification(null);
+
+    try {
+      const res = await fetch('/api/coach/normalize-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim() }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      const responseText = await res.text();
+
+      if (!contentType.includes('application/json')) {
+        throw new Error("Server bilan aloqada vaqtinchalik uzilish bo'ldi.");
+      }
+
+      const data = JSON.parse(responseText);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Shevani adabiy tilga aylantirishda xatolik yuz berdi");
+      }
+
+      onChangeText(data.data.normalizedText);
+      const dialects =
+        data.data.detectedDialects?.length > 0
+          ? data.data.detectedDialects.join(', ')
+          : "Sheva va og'zaki talaffuz";
+      setDialectNotification(`✨ Sheva adabiy tilga o'tkazildi (${dialects}).`);
+    } catch (err: any) {
+      setSpeechError(err?.message || "Shevani to'g'rilashda xatolik yuz berdi");
+    } finally {
+      setIsNormalizingDialect(false);
+    }
+  };
+
   // Toggle Web Speech recognition with auto accent & dialect normalization
   const toggleListening = () => {
     const SpeechRecognition =
@@ -165,16 +210,15 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
         }
 
         if (newlyFinalized) {
-          // Normalize speech output: remove dialect slurs, fix x/h and apostrophes
-          const normalized = autoCorrectVoice && speechLang === 'uz-UZ'
-            ? normalizeUzbekVoiceText(newlyFinalized.trim())
-            : newlyFinalized.trim();
+          // Normalize speech output: remove dialect slurs, fix x/h, tech terms and apostrophes
+          const normalized =
+            autoCorrectVoice && speechLang === 'uz-UZ'
+              ? normalizeUzbekVoiceText(newlyFinalized.trim())
+              : newlyFinalized.trim();
 
-          onChangeText(
-            text
-              ? `${text.trimEnd()} ${normalized}`
-              : normalized
-          );
+          if (normalized) {
+            onChangeText(text ? `${text.trimEnd()} ${normalized}` : normalized);
+          }
         }
 
         setInterimText(currentInterim);
@@ -233,6 +277,29 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Dialect to Literary Converter Button */}
+          <button
+            type="button"
+            onClick={handleNormalizeDialect}
+            disabled={disabled || isNormalizingDialect || !text.trim()}
+            className={`min-h-[36px] px-2.5 py-1 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+              isNormalizingDialect
+                ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 animate-pulse'
+                : 'text-indigo-700 dark:text-indigo-300 bg-indigo-50/80 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/60 dark:border-indigo-800/60'
+            } ${!text.trim() ? 'opacity-40 cursor-not-allowed' : ''}`}
+            title="O'zbekiston hududiy shevalari va og'zaki nutqni sof adabiy tilga aylantirish"
+          >
+            {isNormalizingDialect ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+            ) : (
+              <Languages className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            )}
+            <span className="hidden md:inline">
+              {isNormalizingDialect ? "Adabiy tilga o'tmoqda..." : "Shevani adabiy qilish"}
+            </span>
+            <span className="md:hidden">Sheva</span>
+          </button>
+
           {/* Real-time Spell Check Indicator Toggle */}
           <button
             type="button"
@@ -252,7 +319,7 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
                 ? spellingIssues.length > 0
                   ? `${spellingIssues.length} ta imlo xatosi`
                   : 'Imlo toza'
-                : 'Imlo tekshiruvi: o\'chiq'}
+                : "Imlo tekshiruvi: o'chiq"}
             </span>
           </button>
 
@@ -337,6 +404,22 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
         </div>
       </div>
 
+      {/* Dialect Normalization Success Banner */}
+      {dialectNotification && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/70 border-b border-emerald-200 dark:border-emerald-900/60 px-4 py-2 flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 animate-in fade-in">
+          <div className="flex items-center gap-1.5">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{dialectNotification}</span>
+          </div>
+          <button
+            onClick={() => setDialectNotification(null)}
+            className="text-emerald-800 dark:text-emerald-300 font-bold px-1 hover:underline ml-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Real-time Spelling Suggestions Drawer */}
       {enableSpellCheck && spellingIssues.length > 0 && (
         <div className="bg-amber-50/90 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-900/60 px-4 py-2.5 text-xs text-amber-950 dark:text-amber-200 animate-in fade-in">
@@ -411,11 +494,11 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600"></span>
             </span>
             <div className="truncate">
-              <strong>Eshitmoqdaman ({speechLang === 'uz-UZ' ? "O'zbek tili filtri faol" : speechLang})...</strong>{' '}
+              <strong>Eshitmoqdaman ({speechLang === 'uz-UZ' ? "O'zbek sheva filtri faol" : speechLang})...</strong>{' '}
               {interimText ? (
                 <span className="italic opacity-90 font-serif">"{interimText}"</span>
               ) : (
-                <span className="opacity-75">Gapiring... og'zaki aksent va xatolar avtomatik to'g'rilanadi.</span>
+                <span className="opacity-75">Gapiring... shevalar va og'zaki talaffuz avtomatik to'g'rilanadi.</span>
               )}
             </div>
           </div>
@@ -427,7 +510,7 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
                   ? 'bg-emerald-600 text-white'
                   : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
               }`}
-              title="Og'zaki so'zlarni adabiy tilga avto-to'g'rilash"
+              title="Sheva va talaffuz xatolarini avto-to'g'rilash"
             >
               {autoCorrectVoice ? "Avto-filtr: Yoqiq" : "Avto-filtr: O'chiq"}
             </button>
@@ -481,7 +564,7 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
           onChange={(e) => onChangeText(e.target.value)}
           onSelect={handleSelect}
           disabled={disabled}
-          placeholder="Insho, hikoya lavhasi yoki blog post matnini bu yerga yozing yoki mikrofondan foydalanib ovozda ayting...&#10;&#10;Real vaqtda imlo xatolari ta'kidlanadi, og'zaki nutqdagi aksent va dialekt xatolari avtomatik tuzatiladi."
+          placeholder="Insho, hikoya lavhasi yoki blog post matnini bu yerga yozing yoki mikrofondan foydalanib ovozda ayting...&#10;&#10;Shevada gapirganingizda ham 'Shevani adabiy qilish' tugmasi uni sof o'zbek adabiy tiliga aylantiradi."
           className="w-full h-full flex-1 resize-none bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 text-base leading-relaxed sm:leading-loose font-serif focus:outline-none focus:ring-0 border-none p-0"
         />
       </div>
